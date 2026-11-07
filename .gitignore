@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Secrets: NEVER commit these (cookies.txt = your logged-in YouTube session)
+cookies.txt
+*cookies*.txt
+.env
+.env.*
+
+# Downloaded audio cache
+cache/
+
+# Per-device runtime settings (names, offsets, mute state)
+devices.json
+
+# Your local pm2 config (contains personal paths). Commit ecosystem.config.example.js instead
+ecosystem.config.js
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+.pm2/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# yt-dlp binary if you drop it in the project folder
+yt-dlp.exe
+yt-dlp

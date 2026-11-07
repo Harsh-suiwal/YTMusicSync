@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MusicSync</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262a33; --fg:#e8e8ea; --dim:#8b8f99; --acc:#ff4d4d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--fg); padding:14px; max-width:720px; margin:auto; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:22px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  button { background:#262a33; color:var(--fg); border:0; border-radius:8px; padding:8px 12px; font-size:14px; cursor:pointer; }
+  button:active { background:#333845; }
+  button.acc { background:var(--acc); }
+  input[type=text] { background:#0f1115; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px; width:100%; font-size:14px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .grow { flex:1; min-width:0; }
+  .title { font-size:17px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dim { color:var(--dim); font-size:13px; }
+  input[type=range] { width:100%; accent-color:var(--acc); }
+  .q div { padding:7px 4px; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .q div.on { color:var(--acc); font-weight:600; }
+  .dev { padding:10px 0; border-bottom:1px solid var(--line); }
+  .dev:last-child { border:0; }
+  .dev .btns { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; align-items:center; }
+  .dev .btns button { padding:6px 9px; font-size:13px; }
+  .me { color:var(--acc); font-size:12px; }
+  #overlay { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:20px; z-index:10; }
+  #overlay .card { width:100%; max-width:340px; }
+  #toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#000; padding:9px 14px; border-radius:8px; display:none; max-width:90%; }
+  details.console { padding:0; margin-top:22px; }
+  details.console summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding:12px; color:var(--dim); font-size:13px; text-transform:uppercase; letter-spacing:.08em; }
+  details.console summary::-webkit-details-marker { display:none; }
+  .console-body { border-top:1px solid var(--line); padding:10px; }
+  .console-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .console-controls label { display:flex; gap:6px; align-items:center; color:var(--dim); font-size:13px; }
+  .console-controls input { accent-color:var(--acc); }
+  #consoleLog { height:260px; overflow:auto; margin-top:10px; padding:8px; border-radius:8px; background:#0f1115; font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; }
+  .log-line { display:flex; gap:7px; align-items:flex-start; padding:2px 0; overflow-wrap:anywhere; }
+  .log-time,.log-source { color:var(--dim); flex:none; }
+  .log-message { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .log-line.log-error { color:#ff7777; }
+  .log-line.log-warn { color:#ffc66d; }
+  .log-line.log-info { color:#aeb3bf; }
+</style>
+</head>
+<body>
+
+<div id="overlay"><div class="card">
+  <div class="title" style="margin-bottom:10px">MusicSync</div>
+  <div class="dim" style="margin-bottom:6px">Device name</div>
+  <input type="text" id="nameIn" maxlength="30">
+  <button class="acc" id="joinBtn" style="width:100%;margin-top:12px">Join</button>
+  <div class="dim" style="margin-top:10px">Tap once so the browser allows audio.</div>
+</div></div>
+
+<h2>Now playing</h2>
+<div class="card">
+  <div class="title" id="trackTitle">Nothing yet</div>
+  <div class="dim" id="status">&nbsp;</div>
+  <input type="range" id="seekBar" min="0" max="1000" value="0" style="margin:10px 0">
+  <div class="row">
+    <button id="prevBtn">⏮</button>
+    <button id="toggleBtn" class="acc grow">▶ / ⏸</button>
+    <button id="nextBtn">⏭</button>
+  </div>
+</div>
+
+<div id="dim" style="display:none;position:fixed;inset:0;background:#000;z-index:99"></div>
+<button id="dimBtn">Dim</button>
+
+<h2>Import playlist</h2>
+<div class="card row">
+  <input type="text" id="plUrl" placeholder="Paste YT Music / YouTube playlist or song URL">
+  <button id="importBtn" class="acc">Load</button>
+</div>
+
+<h2>Devices</h2>
+<div class="card" id="devices"><span class="dim">Connecting…</span></div>
+<div class="dim" style="margin-top:6px">Offset: + makes that device play earlier. Use it for Bluetooth / slow outputs.</div>
+
+<h2>Queue</h2>
+<div class="card q" id="queue"><span class="dim">Empty</span></div>
+
+<details class="card console" id="consolePanel">
+  <summary><span>Console</span><span class="dim" id="consoleCount">0</span></summary>
+  <div class="console-body">
+    <div class="console-controls">
+      <button id="clearLogsBtn" type="button">Clear</button>
+      <button id="copyLogsBtn" type="button">Copy all</button>
+      <button id="jumpEndBtn" type="button">Jump to end−8s</button>
+      <label><input type="checkbox" id="errorsOnly"> Errors only</label>
+    </div>
+    <div id="consoleLog" role="log" aria-live="polite"></div>
+  </div>
+</details>
+
+<div id="toast"></div>
+<audio id="audio" preload="auto"></audio>
+<audio id="audio2" preload="auto"></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const els = [$('audio'), $('audio2')];
+let audio = els[0];
+let idle = els[1];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// NOTE: crypto.randomUUID needs HTTPS, so use a plain random id on LAN http
+const myId = localStorage.msId || (localStorage.msId = Math.random().toString(36).slice(2) + Date.now().toString(36));
+$('nameIn').value = localStorage.msName || (/Android|iPhone/i.test(navigator.userAgent) ? 'Phone' : 'PC');
+
+let ws, S = null, clockOffset = 0, bestRtt = Infinity, samples = [];
+let myOffset = 0, myMuted = false, loadedId = null, idleId = null, idleReadyId = null, idleFailedId = null, handoffDriftTimer = null, dragging = false, joined = false;
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 3500);
+}
+const tx = m => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+
+// Waker
+let wakeLock = null;
+async function keepScreenOn() {
+  if (!('wakeLock' in navigator)) {
+    tx({ type: 'clientLog', level: 'warn', message: 'wakeLock unavailable (needs HTTPS or the insecure-origin flag)' });
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    tx({ type: 'clientLog', level: 'info', message: 'wakeLock acquired' });
+  } catch (e) {
+    tx({ type: 'clientLog', level: 'warn', message: 'wakeLock failed: ' + e.name });
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !wakeLock) keepScreenOn();
+});
+
+// dim buttons
+$('dimBtn').onclick = () => { $('dim').style.display = 'block'; };
+$('dim').onclick = () => { $('dim').style.display = 'none'; };
+
+// ---------- live server console ----------
+let serverLogs = [], visibleLogs = [], clearedLogIds = new Set();
+function logKey(entry) {
+  return entry.id || [entry.timestamp, entry.level, entry.source, entry.message].join('|');
+}
+function renderConsole() {
+  const box = $('consoleLog');
+  const filtered = $('errorsOnly').checked ? visibleLogs.filter(entry => entry.level === 'error') : visibleLogs;
+  box.textContent = '';
+  for (const entry of filtered) {
+    const line = document.createElement('div');
+    line.className = 'log-line log-' + (['info', 'warn', 'error'].includes(entry.level) ? entry.level : 'info');
+    const time = document.createElement('span');
+    time.className = 'log-time';
+    const parsedTime = new Date(entry.timestamp);
+    time.textContent = Number.isNaN(parsedTime.getTime()) ? String(entry.timestamp || '') : parsedTime.toLocaleTimeString();
+    const source = document.createElement('span');
+    source.className = 'log-source';
+    source.textContent = String(entry.source || 'server');
+    const message = document.createElement('span');
+    message.className = 'log-message';
+    message.textContent = String(entry.message == null ? '' : entry.message);
+    line.append(time, source, message);
+    box.appendChild(line);
+  }
+  $('consoleCount').textContent = String(serverLogs.length);
+  box.scrollTop = box.scrollHeight;
+}
+function receiveLogHistory(entries) {
+  serverLogs = Array.isArray(entries) ? entries.slice(-300) : [];
+  visibleLogs = serverLogs.filter(entry => !clearedLogIds.has(logKey(entry)));
+  renderConsole();
+}
+function receiveLog(entry) {
+  if (!entry) return;
+  serverLogs.push(entry);
+  if (serverLogs.length > 300) serverLogs.splice(0, serverLogs.length - 300);
+  if (!clearedLogIds.has(logKey(entry))) {
+    visibleLogs.push(entry);
+    if (visibleLogs.length > 300) visibleLogs.splice(0, visibleLogs.length - 300);
+  }
+  renderConsole();
+}
+$('clearLogsBtn').onclick = () => {
+  clearedLogIds = new Set(serverLogs.map(logKey));
+  visibleLogs = [];
+  renderConsole();
+};
+$('consolePanel').addEventListener('toggle', () => {
+  if ($('consolePanel').open) $('consoleLog').scrollTop = $('consoleLog').scrollHeight;
+});
+$('errorsOnly').onchange = renderConsole;
+$('jumpEndBtn').onclick = () => {
+  if (!S || !S.track || !Number.isFinite(audio.duration)) {
+    toast('Track duration is not ready');
+    return;
+  }
+  tx({ type: 'seek', pos: Math.max(0, audio.duration - 8) });
+};
+$('copyLogsBtn').onclick = async () => {
+  const text = serverLogs.map(entry => [entry.timestamp, entry.level, entry.source, entry.message].join(' ')).join('\n');
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const field = document.createElement('textarea');
+      field.value = text;
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand('copy');
+      field.remove();
+      if (!copied) throw new Error('Copy command unavailable');
+    }
+    toast('Console copied');
+  } catch {
+    toast('Could not copy console');
+  }
+};
+
+// ---------- browser-side error forwarding ----------
+const pendingClientLogs = [];
+function sendClientLog(level, message) {
+  const entry = { type: 'clientLog', level, message: String(message).slice(0, 500) };
+  if (ws && ws.readyState === 1) tx(entry);
+  else {
+    pendingClientLogs.push(entry);
+    if (pendingClientLogs.length > 20) pendingClientLogs.shift();
+  }
+}
+window.onerror = (message, source, line, column, error) => {
+  const detail = error && (error.stack || error.message) || String(message);
+  sendClientLog('error', 'Window error: ' + detail + (source ? ' (' + source + ':' + line + ':' + column + ')' : ''));
+  return false;
+};
+window.addEventListener('unhandledrejection', event => {
+  const reason = event.reason;
+  const detail = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+  sendClientLog('error', 'Unhandled promise rejection: ' + detail);
+});
+
+// ---------- connection + clock sync ----------
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => {
+    tx({ type: 'hello', id: myId, name: localStorage.msName || $('nameIn').value });
+    while (pendingClientLogs.length) tx(pendingClientLogs.shift());
+    samples = [];
+    for (let i = 0; i < 8; i++) setTimeout(() => tx({ type: 'ping', t0: Date.now() }), i * 150);
+  };
+  ws.onclose = () => setTimeout(connect, 1000);
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'logs') receiveLogHistory(m.entries);
+    else if (m.type === 'log') receiveLog(m.entry);
+    else if (m.type === 'pong') {
+      const t1 = Date.now(), rtt = t1 - m.t0;
+      samples.push({ rtt, off: m.ts - (m.t0 + rtt / 2) });
+      if (samples.length > 10) samples.shift();
+      const best = samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
+      clockOffset = best.off; bestRtt = best.rtt;
+      tx({ type: 'stat', rtt: best.rtt });
+    } else if (m.type === 'state') { S = m; onState(); }
+    else if (m.type === 'settings') { myOffset = m.offset; myMuted = m.muted; audio.muted = myMuted; }
+    else if (m.type === 'devices') renderDevices(m.devices);
+    else if (m.type === 'error' || m.type === 'info') toast(m.message);
+  };
+}
+setInterval(() => tx({ type: 'ping', t0: Date.now() }), 5000);
+
+// ---------- sync engine ----------
+const targetPos = () => (Date.now() + clockOffset - S.anchor) / 1000 + myOffset / 1000;
+
+function loadInto(element, id) {
+  element.src = '/audio/' + id;
+  element.load();
+}
+
+function clearIdle() {
+  idle.pause();
+  idle.removeAttribute('src');
+  idle.load();
+  idleId = null;
+  idleReadyId = null;
+}
+
+function swapElements() {
+  [audio, idle] = [idle, audio];
+  loadedId = idleId;
+  idleId = null;
+  idleReadyId = null;
+  idle.pause();
+  idle.removeAttribute('src');
+  idle.load();
+  audio.muted = myMuted;
+  audio.playbackRate = 1;
+  setMediaSession();
+}
+
+function onState() {
+  if (S.track && S.track.id !== loadedId) {
+    if (idleId === S.track.id) {
+      swapElements();
+      const target = targetPos();
+      if (S.playing && target >= 0) {
+        audio.currentTime = target;
+        audio.play().catch(error => {
+          const level = error && error.name === 'NotAllowedError' ? 'warn' : 'error';
+          sendClientLog(level, 'audio.play() rejected: ' + (error && error.message || String(error)));
+        });
+      }
+    } else {
+      audio.pause();
+      clearIdle();
+      idleFailedId = null;
+      loadedId = S.track.id;
+      loadInto(audio, loadedId);
+      setMediaSession();
+    }
+  }
+  if (!S.track) {
+    audio.pause();
+    loadedId = null;
+    clearIdle();
+    idleFailedId = null;
+  }
+  const nextTrack = S.queue[S.cur + 1];
+  if (nextTrack && idleId !== nextTrack.id && idleFailedId !== nextTrack.id) {
+    clearIdle();
+    idleId = nextTrack.id;
+    loadInto(idle, idleId);
+  } else if (!nextTrack && idleId) {
+    clearIdle();
+    idleFailedId = null;
+  }
+  renderPlayer(); renderQueue(); tick();
+}
+
+function tick() {
+  if (!joined || !S || !S.track || S.loading) return;
+  audio.muted = myMuted;
+  if (!S.playing) {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    if (!audio.paused) audio.pause();
+    if (Math.abs(audio.currentTime - S.pausedPos) > 0.2) audio.currentTime = S.pausedPos;
+    return;
+  }
+  const target = targetPos();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  if (target < 0) { if (!audio.paused) audio.pause(); return; } // waiting for the shared start time
+  if (audio.paused) {
+    audio.currentTime = target;
+    audio.play().catch(error => {
+      const level = error && error.name === 'NotAllowedError' ? 'warn' : 'error';
+      sendClientLog(level, 'audio.play() rejected: ' + (error && error.message || String(error)));
+    });
+    return;
+  }
+  const diff = audio.currentTime - target; // + means this device is ahead
+  if (Math.abs(diff) > 0.25) { audio.currentTime = target; audio.playbackRate = 1; }
+  else if (Math.abs(diff) > 0.015) audio.playbackRate = 1 - Math.max(-0.05, Math.min(0.05, diff * 0.5));
+  else audio.playbackRate = 1;
+
+  if (!dragging && audio.duration) $('seekBar').value = (audio.currentTime / audio.duration) * 1000;
+  $('status').textContent = `drift ${Math.round(diff * 1000)}ms · ping ${Math.round(bestRtt)}ms`;
+}
+setInterval(tick, 200);
+
+function handoff() {
+  if (!S || !S.playing || !S.track) return;
+  const nextTrack = S.queue[S.cur + 1];
+  let reason = '';
+  if (!nextTrack) reason = 'no next track';
+  else if (idleId !== nextTrack.id) reason = 'wrong track';
+  else if (idle.readyState < 2) reason = 'not ready';
+  else if (!Number.isFinite(audio.duration)) reason = 'invalid duration';
+  if (reason) {
+    sendClientLog('warn', 'handoff: fallback to server (reason=' + reason + ')');
+    tx({ type: 'ended', anchor: S.anchor, cur: S.cur });
+    return;
+  }
+
+  const old = { cur: S.cur, anchor: S.anchor };
+  const durationMs = audio.duration * 1000;
+  const newAnchor = old.anchor + durationMs;
+  const target = (Date.now() + clockOffset - newAnchor) / 1000 + myOffset / 1000;
+  const nextAudio = idle;
+  if (target > 0) nextAudio.currentTime = target;
+  nextAudio.muted = myMuted;
+  nextAudio.playbackRate = 1;
+  nextAudio.play().catch(error => {
+    const level = error && error.name === 'NotAllowedError' ? 'warn' : 'error';
+    sendClientLog(level, 'handoff playback rejected: ' + (error && error.message || String(error)));
+  });
+  swapElements();
+  S = Object.assign({}, S, {
+    cur: old.cur + 1,
+    track: nextTrack,
+    anchor: newAnchor,
+    loading: false,
+    playing: true,
+    pausedPos: 0
+  });
+  tx({ type: 'advance', cur: old.cur, anchor: old.anchor, durMs: durationMs });
+  sendClientLog('info', 'handoff: local swap OK (next=' + nextTrack.title + ')');
+  clearTimeout(handoffDriftTimer);
+  handoffDriftTimer = setTimeout(() => {
+    if (!S || !S.playing || !S.track || !Number.isFinite(audio.currentTime)) return;
+    const driftMs = Math.round((audio.currentTime - targetPos()) * 1000);
+    sendClientLog('info', 'handoff drift: ' + driftMs + 'ms');
+  }, 2000);
+  renderPlayer();
+  renderQueue();
+}
+
+function mediaErrorMessage(element) {
+  if (!element.error) return 'media could not be loaded';
+  return 'Audio element error (code ' + element.error.code + '): ' +
+    (element.error.message || 'media could not be loaded') +
+    (element.currentSrc ? ' [' + element.currentSrc + ']' : '');
+}
+
+els.forEach(element => {
+  element.addEventListener('ended', () => {
+    if (element === audio) handoff();
+  });
+  element.addEventListener('error', () => {
+    if (element === idle && idleId) {
+      const failedId = idleId;
+      idleId = null;
+      idleReadyId = null;
+      idleFailedId = failedId;
+      sendClientLog('warn', 'idle preload failed: ' + failedId + ' (' + mediaErrorMessage(element) + ')');
+      return;
+    }
+    if (element === audio) sendClientLog('error', mediaErrorMessage(element));
+  });
+  element.addEventListener('canplay', () => {
+    if (element !== idle || !idleId || idleReadyId === idleId) return;
+    idleReadyId = idleId;
+    const track = S && S.queue.find(item => item.id === idleId);
+    sendClientLog('info', 'idle preload ready: ' + (track ? track.title : idleId));
+  });
+});
+
+// ---------- UI ----------
+function renderPlayer() {
+  $('trackTitle').textContent = S.track ? S.track.title : 'Nothing yet';
+  if (S.loading) $('status').textContent = 'Fetching audio…';
+  else if (!S.track) $('status').innerHTML = '&nbsp;';
+}
+function renderQueue() {
+  if (!S.queue.length) return ($('queue').innerHTML = '<span class="dim">Empty</span>');
+  $('queue').innerHTML = S.queue.map((t, i) => `<div data-i="${i}" class="${i === S.cur ? 'on' : ''}">${i + 1}. ${esc(t.title)}</div>`).join('');
+}
+function renderDevices(list) {
+  if (!list.length) return;
+  $('devices').innerHTML = list.map(d => `
+    <div class="dev">
+      <div class="row"><b class="grow">${esc(d.name)} ${d.id === myId ? '<span class="me">(this device)</span>' : ''}</b>
+      <span class="dim">${d.rtt}ms ping</span></div>
+      <div class="btns" data-id="${esc(d.id)}" data-off="${d.offset}">
+        <button data-act="mute">${d.muted ? '🔇 Muted' : '🔊 Playing'}</button>
+        <button data-act="off" data-d="-50">-50</button><button data-act="off" data-d="-10">-10</button>
+        <span style="min-width:62px;text-align:center">${d.offset > 0 ? '+' : ''}${d.offset} ms</span>
+        <button data-act="off" data-d="10">+10</button><button data-act="off" data-d="50">+50</button>
+        <button data-act="reset">reset</button>
+      </div>
+    </div>`).join('');
+}
+$('devices').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const box = b.closest('.btns'), id = box.dataset.id, off = +box.dataset.off;
+  if (b.dataset.act === 'mute') {
+    const muted = b.textContent.includes('Playing');
+    tx({ type: 'setDevice', id, muted });
+  } else if (b.dataset.act === 'off') tx({ type: 'setDevice', id, offset: off + +b.dataset.d });
+  else if (b.dataset.act === 'reset') tx({ type: 'setDevice', id, offset: 0 });
+};
+$('queue').onclick = e => { const d = e.target.closest('[data-i]'); if (d) tx({ type: 'play', index: +d.dataset.i }); };
+$('toggleBtn').onclick = () => tx({ type: 'toggle' });
+$('nextBtn').onclick = () => tx({ type: 'next' });
+$('prevBtn').onclick = () => tx({ type: 'prev' });
+$('importBtn').onclick = () => { const u = $('plUrl').value.trim(); if (u) { tx({ type: 'import', url: u }); toast('Importing…'); } };
+const sb = $('seekBar');
+sb.addEventListener('input', () => (dragging = true));
+sb.addEventListener('change', () => { dragging = false; if (audio.duration) tx({ type: 'seek', pos: (sb.value / 1000) * audio.duration }); });
+
+$('joinBtn').onclick = () => {
+  localStorage.msName = $('nameIn').value.trim() || 'Device';
+  $('overlay').style.display = 'none';
+  joined = true;
+  connect();
+};
+
+function setMediaSession() {
+  if (!('mediaSession' in navigator) || !S.track) return;
+  navigator.mediaSession.metadata = new MediaMetadata({ title: S.track.title, artist: 'MusicSync' });
+  navigator.mediaSession.setActionHandler('play', () => tx({ type: 'toggle' }));
+  navigator.mediaSession.setActionHandler('pause', () => tx({ type: 'toggle' }));
+  navigator.mediaSession.setActionHandler('nexttrack', () => tx({ type: 'next' }));
+  navigator.mediaSession.setActionHandler('previoustrack', () => tx({ type: 'prev' }));
+}
+</script>
+</body>
+</html>
